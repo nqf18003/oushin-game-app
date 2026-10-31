@@ -1,0 +1,861 @@
+<title>往診ドクターの一日</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Chivo+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: 町の地図（キャンバス）を主役に、右に今日の訪問予定と記録。スマホでは縦に積む */
+:root {
+  --bg: #e9eee8; --panel: #fbfcf9; --ink: #1b2a28; --muted: #5a6a66; --line: #d0d9d2;
+  --accent: #0e6b61; --accent-ink: #ffffff; --accent-soft: #d6ebe6;
+  --danger: #c8372d; --danger-soft: #f8dcd8; --warn: #b87d0c; --good: #2e7f45;
+  --map: #e3e9df; --block: #d4ddd0; --deco: #c3cebf; --park: #c4d9b9; --road: #ffffff;
+  --flow1: #4aa26b; --flow2: #e0a526; --flow3: #d9493b; --car: #ffffff;
+  --display: "Dela Gothic One", "Hiragino Kaku Gothic StdN", "Yu Gothic", sans-serif;
+  --body: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+  --mono: "Chivo Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111816; --panel: #19221f; --ink: #e2ebe7; --muted: #93a29d; --line: #2b3733;
+  --accent: #3db6a3; --accent-ink: #062019; --accent-soft: #173a34;
+  --danger: #ff6a5d; --danger-soft: #3d1d1a; --warn: #f0b63a; --good: #5cc27c;
+  --map: #17201d; --block: #202b27; --deco: #2a3732; --park: #1f3427; --road: #36433e;
+  --flow1: #5cc27c; --flow2: #f0b63a; --flow3: #ff6a5d; --car: #f3f6f4; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #111816; --panel: #19221f; --ink: #e2ebe7; --muted: #93a29d; --line: #2b3733;
+  --accent: #3db6a3; --accent-ink: #062019; --accent-soft: #173a34;
+  --danger: #ff6a5d; --danger-soft: #3d1d1a; --warn: #f0b63a; --good: #5cc27c;
+  --map: #17201d; --block: #202b27; --deco: #2a3732; --park: #1f3427; --road: #36433e;
+  --flow1: #5cc27c; --flow2: #f0b63a; --flow3: #ff6a5d; --car: #f3f6f4; color-scheme: dark }
+
+* { box-sizing: border-box }
+[hidden] { display: none !important }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.6 }
+button { font: inherit; color: inherit; cursor: pointer }
+button:focus-visible, li[tabindex]:focus-visible, canvas:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px }
+
+.app { max-width: 1240px; margin: 0 auto; padding-block: 14px 28px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 14px }
+
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px }
+.brand { display: flex; align-items: center; gap: 10px }
+.brand .mark { font-family: var(--display); background: var(--accent); color: var(--accent-ink);
+  padding: 4px 10px 6px; border-radius: 6px; font-size: 20px; letter-spacing: .04em }
+.brand h1 { font-family: var(--display); font-weight: 400; font-size: clamp(20px, 3.2vw, 28px); margin: 0; letter-spacing: .02em; text-wrap: balance }
+.hud { display: flex; gap: 8px; flex-wrap: wrap }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 12px; display: grid; min-width: 84px }
+.stat .lbl { font-size: 11px; color: var(--muted); letter-spacing: .1em }
+.stat .val { font-family: var(--mono); font-weight: 700; font-size: 22px; font-variant-numeric: tabular-nums; line-height: 1.2 }
+.stat.clock .val { color: var(--accent) }
+.stat.late .val { color: var(--danger) }
+
+.alert { display: flex; gap: 10px; align-items: center; background: var(--danger-soft); color: var(--danger);
+  border: 2px solid var(--danger); border-radius: 8px; padding: 8px 14px; font-weight: 700 }
+.alert .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); flex: none; animation: blink 1s infinite }
+@keyframes blink { 50% { opacity: .2 } }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; align-items: start }
+@media (max-width: 900px) { .main { grid-template-columns: minmax(0, 1fr) } }
+
+.mapwrap { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 8px; position: relative; min-width: 0 }
+#map { width: 100%; display: block; border-radius: 6px; touch-action: manipulation }
+.hint { font-size: 14px; color: var(--muted); min-height: 1.6em }
+.hint b { color: var(--ink) }
+.ctl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.btn { border: 1px solid var(--line); background: var(--bg); border-radius: 7px; padding: 7px 14px; font-weight: 500 }
+.btn:hover { border-color: var(--accent) }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700 }
+.btn.danger { background: var(--danger); color: #fff; border-color: var(--danger); font-weight: 700 }
+.btn:disabled { opacity: .45; cursor: default }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-left: auto }
+.legend span { display: inline-flex; align-items: center; gap: 5px }
+.legend i { width: 18px; height: 5px; border-radius: 3px; display: inline-block }
+.toast { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); background: var(--ink); color: var(--panel);
+  padding: 6px 14px; border-radius: 6px; font-size: 14px; font-weight: 500; pointer-events: none; max-width: 90%; text-align: center }
+
+.side { display: grid; gap: 14px; min-width: 0 }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px }
+.card h2 { font-size: 13px; letter-spacing: .12em; color: var(--muted); margin: 0 0 8px; font-weight: 700 }
+#plist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px }
+#plist li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 7px 9px; border-radius: 7px; border: 1px solid var(--line); cursor: pointer }
+#plist li:hover { border-color: var(--accent) }
+#plist li.sel { border-color: var(--accent); background: var(--accent-soft) }
+#plist li.done { opacity: .55 }
+#plist li.emg { border: 2px solid var(--danger); background: var(--danger-soft) }
+#plist .nm { font-weight: 700 }
+#plist .dx { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted) }
+.tag { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 4px; align-self: center; white-space: nowrap; letter-spacing: .05em }
+.tag.reg { background: var(--bg); color: var(--muted); border: 1px solid var(--line) }
+.tag.new { background: var(--accent); color: var(--accent-ink) }
+.tag.emg { background: var(--danger); color: #fff }
+.tag.fac { background: var(--ink); color: var(--panel) }
+.tag.ok { background: var(--good); color: #fff }
+#log { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; max-height: 220px; overflow-y: auto }
+#log li { display: grid; grid-template-columns: 3.4em 1fr; gap: 6px }
+#log .t { font-family: var(--mono); color: var(--muted); font-variant-numeric: tabular-nums }
+#log .p { color: var(--accent); font-weight: 700 }
+#log .m { color: var(--danger); font-weight: 700 }
+
+.modal { position: fixed; inset: 0; background: color-mix(in srgb, var(--ink) 45%, transparent); display: grid; place-items: center; z-index: 20;
+  padding-block: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); overflow-y: auto }
+.sheet { background: var(--panel); color: var(--ink); border-radius: 12px; width: min(560px, 100%); padding: 20px 22px; display: grid; gap: 12px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.25); border-top: 6px solid var(--accent) }
+.sheet.emg { border-top-color: var(--danger) }
+.sheet h3 { font-family: var(--display); font-weight: 400; font-size: 22px; margin: 0; text-wrap: balance }
+.sheet .sub { color: var(--muted); font-size: 13.5px; margin-top: -6px }
+.sheet p { margin: 0 }
+.chart { background: var(--bg); border-radius: 8px; padding: 10px 12px; font-size: 14px; display: grid; gap: 4px }
+.chart .row { display: flex; justify-content: space-between; gap: 10px }
+.chart .row b { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap }
+.plus { color: var(--accent) }
+.minus { color: var(--danger) }
+.opts { display: grid; gap: 8px }
+.opt { text-align: left; border: 1.5px solid var(--line); background: var(--panel); border-radius: 8px; padding: 10px 12px; line-height: 1.5 }
+.opt:hover:not(:disabled) { border-color: var(--accent) }
+.opt.right { border-color: var(--good); background: color-mix(in srgb, var(--good) 14%, var(--panel)) }
+.opt.wrong { border-color: var(--danger); background: var(--danger-soft) }
+.opt.part { border-color: var(--warn) }
+.opt:disabled { cursor: default }
+.checks { display: grid; gap: 6px }
+.chk { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: start; padding: 7px 10px; border: 1.5px solid var(--line); border-radius: 8px; cursor: pointer; line-height: 1.5 }
+.chk input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent) }
+.chk .res { font-size: 12px; font-weight: 700; white-space: nowrap }
+.chk.right { border-color: var(--good) } .chk.right .res { color: var(--good) }
+.chk.wrong { border-color: var(--danger); background: var(--danger-soft) } .chk.wrong .res { color: var(--danger) }
+.chk.cond { border-style: dotted } .chk.cond .res { color: var(--muted) }
+.note { font-size: 12px; color: var(--muted) }
+.chk.miss { border-style: dashed; border-color: var(--warn) } .chk.miss .res { color: var(--warn) }
+.fiction { border: 1.5px solid var(--line); background: var(--bg); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; display: grid; gap: 4px }
+.fiction b { color: var(--ink) }
+.foot { font-size: 12px; color: var(--muted); margin: 0 }
+.ex { border-left: 4px solid var(--accent); padding: 6px 12px; background: var(--accent-soft); border-radius: 0 6px 6px 0; font-size: 14px }
+.actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap }
+.call { font-size: 15px; background: var(--danger-soft); border-radius: 8px; padding: 10px 12px; font-weight: 500 }
+.rules { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; font-size: 14px }
+.big { font-family: var(--mono); font-size: 44px; font-weight: 700; color: var(--accent); line-height: 1; font-variant-numeric: tabular-nums }
+.rank { font-family: var(--display); font-size: 20px }
+@media (prefers-reduced-motion: reduce) { .alert .dot { animation: none } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="mark">往診</span><h1>ドクターの一日</h1></div>
+    <div class="hud">
+      <div class="stat clock" id="clockBox"><span class="lbl">時刻</span><span class="val" id="clock">9:00</span></div>
+      <div class="stat"><span class="lbl">得点</span><span class="val" id="score">0</span></div>
+      <div class="stat"><span class="lbl">診察</span><span class="val" id="seen">0</span></div>
+      <div class="stat"><span class="lbl">最短ルート</span><span class="val" id="perfect">0</span></div>
+    </div>
+  </header>
+
+  <div class="alert" id="alert" hidden><span class="dot"></span><span id="alertText"></span></div>
+
+  <main class="main">
+    <section class="mapwrap" id="mapwrap">
+      <canvas id="map" tabindex="0" aria-label="町の地図。光っている交差点をクリックして車を進めます"></canvas>
+      <div class="toast" id="toast" hidden></div>
+      <div class="hint" id="hint"></div>
+      <div class="ctl">
+        <button class="btn" id="navi">ナビを見る（−30点）</button>
+        <button class="btn" id="finish">帰院して一日を終える</button>
+        <div class="legend">
+          <span><i style="background:var(--flow1)"></i>すいている</span>
+          <span><i style="background:var(--flow2)"></i>やや混雑</span>
+          <span><i style="background:var(--flow3)"></i>渋滞</span>
+          <span>数字＝通過にかかる分</span>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="card">
+        <h2>今日の訪問予定</h2>
+        <ul id="plist"></ul>
+      </div>
+      <div class="card">
+        <h2>診療の記録</h2>
+        <ol id="log"></ol>
+      </div>
+    </aside>
+  </main>
+  <p class="foot">このゲームはフィクションです。登場する人物・施設は架空のものです。訪問診療の手順を学ぶための学習用で、医学的な内容や診療報酬は簡略化しています。</p>
+</div>
+
+<div class="modal" id="modal" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+
+<script>
+(() => {
+const COLS = 8, ROWS = 6, DAY_START = 9 * 60, DAY_END = 17 * 60;
+const VISIT_MIN = { regular: 20, new: 40, emg: 30, facility: 40 };
+const $ = s => document.querySelector(s);
+const cv = $('#map'), ctx = cv.getContext('2d');
+
+// ---------- 診療報酬（主なものだけ。点数・算定要件は省略） ----------
+const FEES = [
+  ['homonOther', '在宅患者訪問診療料（Ⅰ）1　同一建物居住者以外'],
+  ['homonSame', '在宅患者訪問診療料（Ⅰ）1　同一建物居住者'],
+  ['zaiso', '在宅時医学総合管理料（在医総管）'],
+  ['shiso', '施設入居時等医学総合管理料（施医総管）'],
+  ['hot', '在宅酸素療法指導管理料（＋酸素濃縮装置加算）'],
+  ['insulin', '在宅自己注射指導管理料（＋血糖自己測定器加算）'],
+  ['shoshin', '初診料'],
+  ['saishin', '再診料'],
+  ['oushin', '往診料'],
+];
+const HOME_BILL = { homonOther: 1, zaiso: 1 };
+const HOME_EX = '自宅への定期的な訪問なので「同一建物居住者以外」の訪問診療料と、月ごとの在医総管。訪問診療料には再診料の分が含まれるので、再診料は別に算定しません。';
+const FACILITY = { name: 'ケアホームひだまり', dx: '住宅型有料老人ホーム（今日の診察 3人）', kind: 'facility',
+  residents: [
+    { name: '森 ○シ', age: 89, sex: '女', dx: 'アルツハイマー型認知症', bill: { homonSame: 1, shiso: 1 } },
+    { name: '木○ ○ク', age: 83, sex: '女', dx: '2型糖尿病（インスリン自己注射・血糖自己測定）', bill: { homonSame: 1, shiso: 1, insulin: 1 },
+      billEx: 'インスリンの自己注射を指導・管理しているので在宅自己注射指導管理料。血糖を自分で測っていれば血糖自己測定器加算もつきます。' },
+    { name: '清○ ○シ', age: 91, sex: '女', dx: '高血圧・心房細動', bill: { homonSame: 1, shiso: 1 } },
+  ],
+  q: '木○さん：施設職員の記録で、朝食前の血糖が 60〜70 mg/dL 台の日が続いている。食事は半分ほどしか食べていない。',
+  opts: [['インスリンを減らし、低血糖のときの対応を施設職員と確認する', 2], ['次の訪問まで様子を見る', 1], ['食事量が少ないので、インスリンを増やす', 0]],
+  ex: '食事量が減っているのに同じ量のインスリンを続けると低血糖になります。量を減らし、低血糖時の対応（ブドウ糖など）を職員と共有しましょう。',
+  billEx: '有料老人ホームなど同じ建物の入居者を同じ日に複数人診たときは「同一建物居住者」の訪問診療料。管理料は在医総管ではなく施医総管です。' };
+
+// ---------- 患者データ ----------
+const REGULAR = [
+  { name: '佐○ ○ル', age: 92, sex: '女', dx: '慢性心不全',
+    q: '訪問看護の記録を見ると、この1週間で体重が2kg増えている。足のむくみも強くなった。',
+    opts: [['利尿薬を調整し、訪問看護に毎日の体重測定を指示する', 2], ['次の訪問まで薬は変えずに様子を見る', 0], ['水分をしっかりとるように勧める', 0]],
+    ex: '短い期間での体重増加とむくみは、心不全が悪くなっているサイン。早めに薬を調整し、毎日の体重チェックで入院を防ぎます。', bill: HOME_BILL },
+  { name: '田○ ○夫', age: 78, sex: '男', dx: 'COPD（在宅酸素療法）',
+    q: 'SpO2は92%でいつも通り。家族から「酸素をつけたまま台所のガスコンロに近づく」と相談された。',
+    opts: [['火気から2m以上離れるよう本人と家族に説明し、酸素業者とケアマネジャーにも伝える', 2], ['酸素の流量を上げて安心させる', 0], ['危ないので酸素をやめてもらう', 0]],
+    ex: '在宅酸素は火気に近づくと火災の危険があります。説明に加えて、関わる事業所みんなで情報を共有するのが在宅医療の基本です。',
+    bill: { homonOther: 1, zaiso: 1, hot: 1 }, billEx: '在宅酸素療法をしているので在宅酸素療法指導管理料。酸素濃縮装置を使っていれば加算もつきます。' },
+  { name: '鈴○ ○ヨ', age: 85, sex: '女', dx: 'アルツハイマー型認知症',
+    q: 'お薬カレンダーを見ると飲み忘れが多く、残っている薬がたくさんある。',
+    opts: [['薬を一包化し、薬剤師の訪問とヘルパーの声かけを手配する', 2], ['本人に「しっかり飲んでください」と強く注意する', 1], ['飲み忘れた分は、次に2回分まとめて飲むよう伝える', 0]],
+    ex: '注意するだけでは解決しにくい問題です。薬を一包化して数を減らし、薬剤師やヘルパーなど周りの支えで飲めるようにします。', bill: HOME_BILL },
+  { name: '伊○ ○ミ', age: 88, sex: '女', dx: '脳梗塞後遺症（寝たきり）',
+    q: 'おしり（仙骨部）に、赤みと浅い傷ができている。褥瘡のはじまりだ。',
+    opts: [['エアマットと2時間ごとの体位変換を手配し、訪問看護と処置の方針を共有する', 2], ['次の訪問まで様子を見る', 1], ['傷にさわらないよう、なるべく同じ姿勢で寝てもらう', 0]],
+    ex: '褥瘡は圧迫が原因。同じ姿勢を続けると悪くなります。体圧を分散するマットと体位変換、訪問看護との連携が大切です。', bill: HOME_BILL },
+];
+const NEW = [
+  { name: '高○ ○郎', age: 70, sex: '男', dx: '膵がん（退院直後・病院から紹介）', extra: '痛みの強さを評価し、医療用麻薬を含む鎮痛薬の方針を決める', bill: { shoshin: 1, zaiso: 2, oushin: 2 }, billEx: '初診の日は初診料を算定し、訪問診療料は算定しません。患者さん側の求めに応じた訪問なら往診料も算定できます。在医総管は、その月に計画的な訪問診療を行えば算定します。' },
+  { name: '渡○ 茂', age: 81, sex: '男', dx: 'パーキンソン病（通院が難しくなった）', extra: '家の中の転びやすい場所を確認し、訪問リハビリを検討する', bill: { shoshin: 1, zaiso: 2, oushin: 2 }, billEx: '初診の日は初診料を算定し、訪問診療料は算定しません。患者さん側の求めに応じた訪問なら往診料も算定できます。在医総管は、その月に計画的な訪問診療を行えば算定します。' },
+];
+const NEW_RIGHT = ['訪問診療についての同意書をもらう', '在宅療養計画書を作り、本人と家族に渡して説明する', '訪問看護指示書を書く',
+  '24時間つながる緊急連絡先を伝える', '紹介状とお薬手帳で、今飲んでいる薬を確認する', 'ケアマネジャーと情報を共有する'];
+const EMG_EX = '予定外に呼ばれて行く診療は「往診」。往診料と再診料を算定します（訪問診療料ではありません）。条件を満たせば緊急往診加算も。在医総管や指導管理料は月ごとの管理料なので、この往診とは別に考えます。';
+const NEW_WRONG = ['次回の外来受診を予約する', '今飲んでいる薬を、いったん全部やめてもらう', '具合が悪くなったら、まず自分で病院へ行くよう伝える'];
+const EMG = [
+  { name: '山○ ○メ', age: 90, sex: '女', dx: '誤嚥性肺炎をくり返している',
+    call: '娘さんから電話。「朝から38.6℃の熱があって、息が速いんです。指で測る酸素が88%しかありません」',
+    q: '到着。体温38.4℃、呼吸数28回、SpO2 88%。痰がからんでいる。',
+    opts: [['診察して酸素を始め、採血と抗菌薬の点滴を開始。悪くなったときの入院について家族と話し合う', 2], ['すぐ救急車を呼び、あとは病院に任せる', 1], ['解熱剤を置いて、明日また来ると伝える', 0]],
+    ex: '肺炎が疑われます。家でできる治療（酸素・点滴）を始めつつ、入院するかどうかを本人・家族の希望も聞いて一緒に決めるのが在宅医療らしい対応です。',
+    bill: { oushin: 1, saishin: 1, zaiso: 2 } },
+  { name: '中○ 勇', age: 84, sex: '男', dx: '骨粗しょう症',
+    call: 'ヘルパーさんから電話。「トイレで転んで、右の足のつけ根を痛がって立てません」',
+    q: '到着。右足が外を向いて短く見え、少し動かすだけで強く痛がる。',
+    opts: [['大腿骨の骨折を疑い、整形外科への搬送を手配して紹介状を書く', 2], ['湿布と痛み止めを出して様子を見る', 0], ['歩けるか確かめるため、立たせてみる', 0]],
+    ex: '足が短く外を向くのは大腿骨頸部骨折の典型的なサイン。手術が必要になることが多いので、早めに整形外科へつなぎます。',
+    bill: { oushin: 1, saishin: 1, zaiso: 2 } },
+  { name: '小○ ○ズ', age: 87, sex: '女', dx: '2型糖尿病（インスリン使用）',
+    call: 'ご家族から電話。「呼びかけへの反応がにぶくて、冷や汗をかいています」',
+    q: '到着。意識はぼんやりして冷や汗がある。血糖を測ると 42 mg/dL。',
+    opts: [['ブドウ糖を静脈注射して回復を確かめ、インスリンの量と食事の量を見直す', 2], ['そのまま寝かせて、しばらく様子を見る', 0], ['意識がぼんやりしたまま、口にご飯を入れる', 0]],
+    ex: '低血糖です。意識がはっきりしないときは口から無理に入れず、ブドウ糖の注射で。原因（インスリン量・食事量）の見直しまでが大切です。',
+    bill: { oushin: 1, saishin: 1, zaiso: 2, insulin: 2 } },
+];
+
+// ---------- 乱数と町づくり ----------
+function rng(seed) { return () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const key = (a, b) => a < b ? a + '-' + b : b + '-' + a;
+const rc = n => [Math.floor(n / COLS), n % COLS];
+function shuffle(a, R) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+function neighbors(n, edges) {
+  const [r, c] = rc(n), out = [];
+  const tryN = (m) => { const e = edges[key(n, m)]; if (e && !e.closed) out.push(m); };
+  if (c > 0) tryN(n - 1); if (c < COLS - 1) tryN(n + 1); if (r > 0) tryN(n - COLS); if (r < ROWS - 1) tryN(n + COLS);
+  return out;
+}
+function connected(edges) {
+  const seen = new Set([0]), q = [0];
+  while (q.length) { const n = q.pop(); for (const m of neighbors(n, edges)) if (!seen.has(m)) { seen.add(m); q.push(m); } }
+  return seen.size === COLS * ROWS;
+}
+function dijkstra(src, edges) {
+  const N = COLS * ROWS, dist = Array(N).fill(Infinity), prev = Array(N).fill(-1), done = Array(N).fill(false);
+  dist[src] = 0;
+  for (let k = 0; k < N; k++) {
+    let u = -1; for (let i = 0; i < N; i++) if (!done[i] && (u < 0 || dist[i] < dist[u])) u = i;
+    if (u < 0 || dist[u] === Infinity) break; done[u] = true;
+    for (const v of neighbors(u, edges)) { const d = dist[u] + edges[key(u, v)].w; if (d < dist[v]) { dist[v] = d; prev[v] = u; } }
+  }
+  return { dist, prev };
+}
+function pathTo(src, dst, edges) {
+  const { prev } = dijkstra(src, edges), p = [dst];
+  while (p[0] !== src && prev[p[0]] >= 0) p.unshift(prev[p[0]]);
+  return p[0] === src ? p : [];
+}
+
+function newGame() {
+  const seed = (Math.random() * 1e9) | 0, R = rng(seed);
+  const edges = {};
+  const add = (a, b) => {
+    const x = R(); let w, t;
+    if (x < 0.2) { t = 3; w = 7 + Math.floor(R() * 3); } else if (x < 0.45) { t = 2; w = 4 + Math.floor(R() * 2); } else { t = 1; w = 2 + Math.floor(R() * 2); }
+    edges[key(a, b)] = { a, b, w, t, closed: false };
+  };
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const n = r * COLS + c; if (c < COLS - 1) add(n, n + 1); if (r < ROWS - 1) add(n, n + COLS);
+  }
+  const keys = Object.keys(edges); let closed = 0, tries = 0;
+  while (closed < 6 && tries++ < 100) {
+    const e = edges[keys[Math.floor(R() * keys.length)]]; if (e.closed) continue;
+    e.closed = true; if (connected(edges)) closed++; else e.closed = false;
+  }
+  const clinic = (1 + Math.floor(R() * (ROWS - 2))) * COLS + 1 + Math.floor(R() * 2);
+  const [cr, cc] = rc(clinic);
+  const spots = shuffle([...Array(COLS * ROWS).keys()].filter(n => { const [r, c] = rc(n); return Math.abs(r - cr) + Math.abs(c - cc) >= 2; }), R);
+  const patients = [];
+  REGULAR.forEach(t => patients.push({ ...t, kind: 'regular' }));
+  NEW.forEach(t => patients.push({ ...t, kind: 'new' }));
+  patients.push({ ...FACILITY, residents: FACILITY.residents.map(r => ({ ...r })) });
+  shuffle(patients, R);
+  const emgs = shuffle(EMG.slice(), R).slice(0, 2).map(t => ({ ...t, kind: 'emg' }));
+  patients.push(...emgs);
+  patients.forEach((p, i) => { p.id = i; p.node = spots[i]; p.status = p.kind === 'emg' ? 'hidden' : 'todo'; p.short = p.kind === 'facility' ? 'ひだまり' : p.name.split(' ')[0]; p.label = p.kind === 'facility' ? p.name : p.name + 'さん'; });
+  const calls = [
+    { pid: patients.length - 2, at: 600 + Math.floor(R() * 80) },
+    { pid: patients.length - 1, at: 810 + Math.floor(R() * 80) },
+  ];
+  return {
+    seed, edges, clinic, patients, calls, car: clinic, time: DAY_START, score: 0,
+    legStart: clinic, legMin: 0, naviPaid: false, navi: false, dest: null,
+    driveMin: 0, perfect: 0, legs: 0, seen: 0, active: null, callAt: 0,
+    log: [], phase: 'title',
+  };
+}
+
+let S = null, anim = null, heading = 0, floaters = [], toastTimer = 0;
+
+// ---------- 表示ユーティリティ ----------
+const hhmm = m => Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0');
+function addLog(text, pts) {
+  S.log.unshift({ t: S.time, text, pts: pts || 0 });
+  renderSide();
+}
+function addScore(pts, label) {
+  S.score += pts;
+  const g = geo(), [x, y] = nodeXY(S.car, g);
+  floaters.push({ x, y, text: (pts >= 0 ? '+' : '') + pts + (label ? ' ' + label : ''), t0: performance.now(), bad: pts < 0 });
+}
+function toast(msg) {
+  const el = $('#toast'); el.textContent = msg; el.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, 2200);
+}
+function renderHud() {
+  $('#clock').textContent = hhmm(Math.min(S.time, 24 * 60 - 1));
+  $('#clockBox').classList.toggle('late', S.time >= DAY_END - 60);
+  $('#score').textContent = S.score;
+  $('#seen').textContent = S.seen;
+  $('#perfect').textContent = S.perfect;
+  const p = S.active != null ? S.patients[S.active] : null;
+  $('#alert').hidden = !p;
+  if (p) $('#alertText').textContent = `急変：${p.label}宅へ急行（連絡から ${S.time - S.callAt} 分）`;
+  const dest = S.dest != null ? S.patients[S.dest] : null;
+  let h = '';
+  if (S.phase === 'end') h = '今日の診療は終わりました。';
+  else if (dest && dest.status !== 'done') h = `目的地：<b>${dest.label}</b>　光っている交差点をクリック（矢印キーでも進めます）`;
+  else h = '予定リストか地図の家をクリックして目的地を決めましょう。光っている交差点をクリックすると車が進みます。';
+  $('#hint').innerHTML = h;
+  $('#navi').disabled = S.phase !== 'play' || !dest || dest.status === 'done' || S.navi;
+}
+function renderSide() {
+  const ul = $('#plist'); ul.innerHTML = '';
+  S.patients.filter(p => p.status !== 'hidden').forEach(p => {
+    const li = document.createElement('li');
+    li.tabIndex = 0;
+    if (p.status === 'done') li.classList.add('done');
+    if (p.status === 'active') li.classList.add('emg');
+    if (S.dest === p.id) li.classList.add('sel');
+    const tag = p.status === 'done' ? '<span class="tag ok">診察済</span>'
+      : p.kind === 'new' ? '<span class="tag new">初診</span>'
+      : p.kind === 'facility' ? '<span class="tag fac">施設</span>'
+      : p.kind === 'emg' ? '<span class="tag emg">急変</span>' : '<span class="tag reg">定期</span>';
+    li.innerHTML = `<span class="nm">${p.label}${p.age ? ` <small>${p.age}歳 ${p.sex}</small>` : ''}</span>${tag}<span class="dx">${p.dx}</span>`;
+    const pick = () => setDest(p.id);
+    li.onclick = pick; li.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } };
+    ul.appendChild(li);
+  });
+  const ol = $('#log'); ol.innerHTML = '';
+  S.log.forEach(l => {
+    const li = document.createElement('li');
+    const pts = l.pts ? ` <span class="${l.pts > 0 ? 'p' : 'm'}">${l.pts > 0 ? '+' : ''}${l.pts}</span>` : '';
+    li.innerHTML = `<span class="t">${hhmm(l.t)}</span><span>${l.text}${pts}</span>`;
+    ol.appendChild(li);
+  });
+  if (!S.log.length) ol.innerHTML = '<li><span class="t">—</span><span>まだ記録はありません</span></li>';
+  renderHud();
+}
+function setDest(id) {
+  if (S.phase === 'end') return;
+  const p = S.patients[id];
+  if (p.status === 'done') { toast(`${p.label}は診察済みです`); return; }
+  if (S.active != null && id !== S.active) { toast('急変の患者さんを優先しましょう'); return; }
+  S.dest = id; S.navi = false; renderSide();
+}
+
+// ---------- モーダル ----------
+function openModal(html, emg) {
+  const sh = $('#sheet'); sh.className = 'sheet' + (emg ? ' emg' : ''); sh.innerHTML = html;
+  $('#modal').hidden = false; if (S.phase === 'play') S.phase = 'modal';
+  const f = sh.querySelector('button'); if (f) f.focus();
+}
+function closeModal() { $('#modal').hidden = true; if (S.phase === 'modal') S.phase = 'play'; cv.focus(); }
+
+function arrivalChart(p) {
+  const short = dijkstra(S.legStart, S.edges).dist[p.node], actual = S.legMin, diff = actual - short;
+  const bonus = diff <= 0 ? 50 : Math.max(0, 50 - diff * 5);
+  S.legs++; if (diff <= 0) S.perfect++;
+  const rows = [
+    ['到着時刻', hhmm(S.time)],
+    ['運転した時間', actual + ' 分'],
+    ['最短ルートなら', short + ' 分'],
+  ];
+  return { bonus, diff, rows };
+}
+function chartHtml(rows) {
+  return '<div class="chart">' + rows.map(([a, b, cls]) => `<div class="row"><span>${a}</span><b class="${cls || ''}">${b}</b></div>`).join('') + '</div>';
+}
+function finishLeg(p) {
+  S.legStart = p.node; S.legMin = 0; S.navi = false; S.naviPaid = false;
+  p.status = 'done'; S.seen += p.residents ? p.residents.length : 1;
+  if (S.dest === p.id) S.dest = null;
+}
+
+function openVisit(p) {
+  const a = arrivalChart(p);
+  const routeLbl = a.diff <= 0 ? '最短ルート！' : `最短より ${a.diff} 分長い`;
+  const n = p.residents ? p.residents.length : 1, exam = 100 * n;
+  const rows = a.rows.concat([[`ルート点（${routeLbl}）`, '+' + a.bonus, 'plus'], [n > 1 ? `診察（${n}人）` : '診察', '+' + exam, 'plus']]);
+  addScore(exam + a.bonus);
+  addLog(`${p.label}${p.residents ? `で${n}人` : ''}を診察（${{ new: '初診', regular: '定期', facility: '施設' }[p.kind]}・${routeLbl}）`, exam + a.bonus);
+  finishLeg(p);
+  S.time += VISIT_MIN[p.kind];
+  const sub = p.residents ? `${p.dx}・${p.residents.map(r => r.name + 'さん').join('、')}（診察 40分）`
+    : `${p.age}歳 ${p.sex}・${p.dx}・${p.kind === 'new' ? '初診（診察 40分）' : '定期訪問（診察 20分）'}`;
+  const head = `<h3>${p.residents ? p.label + 'に到着' : p.label + '宅に到着'}</h3><div class="sub">${sub}</div>${chartHtml(rows)}`;
+  if (p.kind !== 'new') {
+    openModal(head + `<p><b>診察：</b>${p.q}</p><p>どう対応しますか？</p><div class="opts">${p.opts.map((o, i) => `<button class="opt" data-i="${i}">${o[0]}</button>`).join('')}</div><div id="after"></div>`);
+    bindQuiz(p, 30, 10, () => openBilling(billList(p), afterVisit));
+  } else {
+    const R = rng(S.seed + p.id);
+    const items = shuffle([...NEW_RIGHT.map(t => [t, 1]), [p.extra, 1], ...NEW_WRONG.map(t => [t, 0])], R);
+    openModal(head + `<p><b>初診の指示を出しましょう。</b>今日やることを<b>すべて</b>選んでください。（正しい項目 +15・まちがい −20・全問正解で +50）</p>
+      <div class="checks">${items.map((it, i) => `<label class="chk" data-ok="${it[1]}"><input type="checkbox" id="chk${i}"><span>${it[0]}</span><span class="res"></span></label>`).join('')}</div>
+      <div class="actions"><button class="btn primary" id="decide">指示を確定する</button></div><div id="after"></div>`);
+    $('#decide').onclick = () => {
+      let pts = 0, perfect = true;
+      document.querySelectorAll('.chk').forEach(l => {
+        const ok = l.dataset.ok === '1', on = l.querySelector('input').checked;
+        l.querySelector('input').disabled = true;
+        const res = l.querySelector('.res');
+        if (ok && on) { pts += 15; l.classList.add('right'); res.textContent = '○ +15'; }
+        else if (!ok && on) { pts -= 20; perfect = false; l.classList.add('wrong'); res.textContent = '× −20'; }
+        else if (ok && !on) { perfect = false; l.classList.add('miss'); res.textContent = '抜け'; }
+      });
+      if (perfect) pts += 50;
+      addScore(pts); addLog(`初診の指示 ${perfect ? '（全問正解）' : ''}`, pts);
+      $('#decide').remove();
+      $('#after').innerHTML = `<div class="ex">在宅での初診では、<b>同意書</b>・<b>在宅療養計画書</b>・<b>訪問看護指示書</b>をそろえ、24時間の連絡体制を伝えます。薬の確認とケアマネジャーとの共有も忘れずに。${perfect ? '<br><b>全問正解 +50！</b>' : ''}</div>
+        <div class="actions"><button class="btn primary" id="next">次へ（${hhmm(S.time)} 診察終了）</button></div>`;
+      $('#next').onclick = () => openBilling(billList(p), afterVisit); $('#next').focus();
+    };
+  }
+}
+function bindQuiz(p, best, part, then) {
+  document.querySelectorAll('.opt').forEach(b => b.onclick = () => {
+    const pick = p.opts[+b.dataset.i][1];
+    document.querySelectorAll('.opt').forEach(o => {
+      o.disabled = true; const v = p.opts[+o.dataset.i][1];
+      if (v === 2) o.classList.add('right'); else if (o === b) o.classList.add(v === 1 ? 'part' : 'wrong');
+    });
+    const pts = pick === 2 ? best : pick === 1 ? part : 0;
+    if (pts) addScore(pts);
+    addLog(`判断：${pick === 2 ? 'ベストな対応' : pick === 1 ? 'まずまずの対応' : '見直しが必要'}`, pts);
+    $('#after').innerHTML = `<div class="ex">${pick === 2 ? `<b>ベストな対応です！ +${best}</b><br>` : pick === 1 ? `<b>悪くはありませんが、もっと良い対応があります。 +${part}</b><br>` : '<b>見直しが必要です。</b><br>'}${p.ex}</div>
+      <div class="actions"><button class="btn primary" id="next">次へ：診療報酬を選ぶ</button></div>`;
+    $('#next').onclick = then; $('#next').focus();
+  });
+}
+
+// ---------- 診療報酬を選ぶ ----------
+function billList(p) {
+  if (p.residents) return p.residents.map(r => ({ who: r.name + 'さん', dx: r.dx, bill: r.bill, ex: p.billEx + (r.billEx ? '<br>' + r.billEx : '') }));
+  const how = { regular: '定期の訪問診療（自宅）', new: '初診（自宅）', emg: '急変で呼ばれた臨時の往診（自宅）' }[p.kind];
+  return [{ who: p.label, dx: how + '・' + p.dx, bill: p.bill, ex: (p.kind === 'emg' ? EMG_EX : p.kind === 'regular' ? HOME_EX : '') + (p.billEx ? (p.kind === 'new' ? '' : '<br>') + p.billEx : '') }];
+}
+function openBilling(list, done) {
+  const b = list[0], step = list.length > 1 ? `（残り ${list.length - 1}人）` : '';
+  openModal(`<h3>診療報酬を選ぶ</h3><div class="sub">${b.who}・${b.dx}${step}</div>
+    <p>今日の診療で算定する<b>主な項目</b>をすべて選んでください。（正しい項目 +10・まちがい −15・全問正解で +30）</p>
+    <div class="checks">${FEES.map(([k, t], i) => `<label class="chk" data-v="${b.bill[k] || 0}"><input type="checkbox" id="fee${i}"><span>${t}</span><span class="res"></span></label>`).join('')}</div>
+    <div class="actions"><button class="btn primary" id="decide">算定を確定する</button></div><div id="after"></div>
+    <p class="note">ゲーム用に簡略化しています。実際の点数・算定要件は最新の告示・通知で確認してください。</p>`);
+  $('#decide').onclick = () => {
+    let pts = 0, perfect = true;
+    document.querySelectorAll('.chk').forEach(l => {
+      const v = +l.dataset.v, inp = l.querySelector('input'), on = inp.checked, res = l.querySelector('.res');
+      inp.disabled = true;
+      if (v === 2) { l.classList.add('cond'); res.textContent = '条件しだい'; }
+      else if (v === 1 && on) { pts += 10; l.classList.add('right'); res.textContent = '○ +10'; }
+      else if (v === 1) { perfect = false; l.classList.add('miss'); res.textContent = '抜け'; }
+      else if (on) { pts -= 15; perfect = false; l.classList.add('wrong'); res.textContent = '× −15'; }
+    });
+    if (perfect) pts += 30;
+    addScore(pts); addLog(`診療報酬：${b.who}${perfect ? '（全問正解）' : ''}`, pts);
+    $('#decide').remove();
+    const rest = list.slice(1);
+    $('#after').innerHTML = `<div class="ex">${perfect ? '<b>全問正解 +30！</b><br>' : ''}${b.ex}</div>
+      <div class="actions"><button class="btn primary" id="next">${rest.length ? `次へ：${rest[0].who}` : `次へ（${hhmm(S.time)} 診察終了）`}</button></div>`;
+    $('#next').onclick = () => rest.length ? openBilling(rest, done) : done(); $('#next').focus();
+  };
+}
+function afterVisit() {
+  closeModal(); renderSide();
+  if (!checkEnd()) checkEvents();
+}
+
+function openCall(p) {
+  openModal(`<h3>☎ 急変の連絡</h3><div class="sub">${hhmm(S.time)}　${p.label}（${p.age}歳 ${p.sex}・${p.dx}）</div>
+    <div class="call">${p.call}</div>
+    <p>すぐに向かいましょう。連絡から<b>30分以内</b>に着けば +150、45分以内 +100、60分以内 +50。地図に赤く光る家が目的地です。</p>
+    <div class="actions"><button class="btn danger" id="go">すぐに向かう</button></div>`, true);
+  $('#go').onclick = () => { closeModal(); if (S.car === p.node) openEmergency(p); };
+}
+function openEmergency(p) {
+  const a = arrivalChart(p), el = S.time - S.callAt;
+  const fast = el <= 30 ? 150 : el <= 45 ? 100 : el <= 60 ? 50 : 20;
+  const rows = a.rows.concat([['連絡から到着まで', el + ' 分'], ['駆けつけ点', '+' + fast, 'plus'], [`ルート点（${a.diff <= 0 ? '最短ルート！' : `最短より ${a.diff} 分長い`}）`, '+' + a.bonus, 'plus']]);
+  addScore(fast + a.bonus);
+  addLog(`${p.label}宅へ急行（${el}分で到着）`, fast + a.bonus);
+  finishLeg(p); S.active = null;
+  S.time += VISIT_MIN.emg;
+  openModal(`<h3>${p.label}宅に到着</h3><div class="sub">臨時往診（30分）・${p.dx}</div>${chartHtml(rows)}
+    <p><b>状況：</b>${p.q}</p><p>どう対応しますか？</p><div class="opts">${p.opts.map((o, i) => `<button class="opt" data-i="${i}">${o[0]}</button>`).join('')}</div><div id="after"></div>`, true);
+  bindQuiz(p, 60, 20, () => openBilling(billList(p), afterVisit));
+}
+
+function checkEvents() {
+  if (S.phase !== 'play' || S.active != null) return;
+  const c = S.calls[0];
+  if (c && S.time >= c.at) {
+    S.calls.shift();
+    const p = S.patients[c.pid];
+    p.status = 'active'; S.active = p.id; S.callAt = S.time;
+    S.legStart = S.car; S.legMin = 0; S.dest = p.id; S.navi = false; S.naviPaid = false;
+    addLog(`急変の連絡：${p.label}`);
+    openCall(p);
+  }
+}
+function checkEnd() {
+  if (S.time >= DAY_END && S.phase !== 'end') { endDay(true); return true; }
+  return false;
+}
+
+function endDay(timeUp) {
+  const atClinic = S.car === S.clinic;
+  const rows = [];
+  if (atClinic && !timeUp) { addScore(50); rows.push(['17時までに帰院', '+50', 'plus']); S.log.unshift({ t: S.time, text: '帰院', pts: 50 }); }
+  if (S.active != null) { S.score -= 100; rows.push(['対応できなかった急変', '−100', 'minus']); S.log.unshift({ t: S.time, text: '急変に対応できず', pts: -100 }); }
+  S.phase = 'end';
+  const left = S.patients.filter(p => p.status === 'todo');
+  const rank = S.score >= 2600 ? ['S', '在宅医療の名医'] : S.score >= 2000 ? ['A', '頼れる往診ドクター'] : S.score >= 1400 ? ['B', '一人前まであと少し'] : ['C', '研修中のドクター'];
+  rows.unshift(['診察した患者さん', S.seen + ' 人'], ['最短ルートで到着', `${S.perfect} / ${S.legs} 回`], ['運転した時間の合計', S.driveMin + ' 分']);
+  renderSide();
+  openModal(`<h3>${timeUp ? '17時になりました' : 'おつかれさまでした'}</h3>
+    <div class="sub">今日の往診の成績</div>
+    <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap"><span class="big">${S.score}</span><span class="rank">ランク ${rank[0]}・${rank[1]}</span></div>
+    ${chartHtml(rows)}
+    ${left.length ? `<p>今日診られなかった患者さん：${left.map(p => p.label).join('、')}</p>` : '<p>予定の患者さんを全員診察できました！</p>'}
+    <div class="actions"><button class="btn primary" id="again">新しい町でもう一度</button></div>`);
+  $('#again').onclick = () => { S = newGame(); closeModal(); showTitle(); };
+}
+
+function showTitle() {
+  renderSide();
+  openModal(`<h3>往診ドクターの一日</h3><div class="sub">9:00 に診療所を出発。17:00 までにできるだけ多くの患者さんを診ましょう。</div>
+    <div class="fiction" role="note">
+      <b>このゲームはフィクションです。</b>
+      <span>登場する人物・施設・町は架空のもので、実在の人や団体とは関係ありません。</span>
+      <span>訪問診療の流れや手順（初診の書類、急変への対応、診療報酬の考え方）を覚えるための学習用として作っています。</span>
+      <span>医学的な判断や診療報酬の算定は簡略化しています。実際の診療では、最新のガイドライン・告示・通知に従ってください。</span>
+    </div>
+    <ol class="rules">
+      <li>地図の<b>光っている交差点</b>をクリックして、車を1区画ずつ進めます。道の数字は通過にかかる<b>分</b>。赤い道は渋滞、×は通行止めです。</li>
+      <li>患者さんの家に着くと診察。<b>診察 +100</b>。最短ルートで着けば<b>ルート点 +50</b>（1分遠回りするごとに −5）。</li>
+      <li><b>初診</b>の患者さんには、同意書・在宅療養計画書・訪問看護指示書など、必要な指示を選んで出します。</li>
+      <li><b>施設</b>（有料老人ホーム）では一度に3人を診察できます。1人 +100。</li>
+      <li>診察のあとは<b>診療報酬</b>を選びます。在医総管か施医総管か、同一建物居住者かどうか、HOTやインスリンの指導管理料、往診料など。</li>
+      <li>途中で<b>急変の電話</b>が鳴ります。急いで駆けつけるほど高得点です。</li>
+      <li>迷ったら<b>ナビ</b>（−30点）で最短ルートを確認できます。最後は診療所へ戻って終了（+50）。</li>
+    </ol>
+    <div class="actions"><button class="btn primary" id="start">往診に出発する</button></div>`);
+  $('#start').onclick = () => { S.phase = 'play'; closeModal(); addLog('診療所を出発'); };
+}
+
+// ---------- 運転 ----------
+function tryMove(to) {
+  if (S.phase !== 'play' || anim) return;
+  const e = S.edges[key(S.car, to)];
+  if (!e || e.closed) return;
+  const g = geo(), [x0, y0] = nodeXY(S.car, g), [x1, y1] = nodeXY(to, g);
+  heading = Math.atan2(y1 - y0, x1 - x0);
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  anim = { from: S.car, to, t0: performance.now(), dur: reduce ? 60 : 120 + e.w * 55, w: e.w };
+}
+function finishMove() {
+  const { to, w } = anim; anim = null;
+  S.car = to; S.time += w; S.legMin += w; S.driveMin += w;
+  renderHud();
+  if (checkEnd()) return;
+  const act = S.active != null ? S.patients[S.active] : null;
+  if (act && act.node === to) { openEmergency(act); return; }
+  const p = S.patients.find(q => q.node === to && q.status === 'todo');
+  if (p) {
+    if (act) toast(`${p.label}の家ですが、急変対応を優先します`);
+    else { openVisit(p); return; }
+  }
+  if (to === S.clinic) toast('診療所の前です');
+  checkEvents();
+}
+
+// ---------- 描画 ----------
+let G = null;
+function geo() { return G; }
+function nodeXY(n, g) { const [r, c] = rc(n); return [g.pad + c * g.cell, g.pad + r * g.cell]; }
+function resize() {
+  const w = cv.clientWidth, dpr = window.devicePixelRatio || 1;
+  const pad = Math.max(26, w * 0.055), cell = (w - pad * 2) / (COLS - 1), h = pad * 2 + cell * (ROWS - 1);
+  cv.style.height = h + 'px'; cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  G = { w, h, pad, cell, dpr };
+}
+let colors = {}, colorsAt = 0;
+function readColors(now) {
+  if (now - colorsAt < 400) return; colorsAt = now;
+  const cs = getComputedStyle(document.documentElement);
+  ['bg', 'panel', 'ink', 'muted', 'line', 'accent', 'accent-ink', 'danger', 'good', 'map', 'block', 'deco', 'park', 'road', 'flow1', 'flow2', 'flow3', 'car'].forEach(k => colors[k] = cs.getPropertyValue('--' + k).trim());
+}
+function hash(a, b) { let h = (a * 73856093) ^ (b * 19349663) ^ (S.seed | 0); h = Math.imul(h ^ h >>> 13, 0x5bd1e995); return ((h ^ h >>> 15) >>> 0) / 4294967296; }
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+
+function draw(now) {
+  requestAnimationFrame(draw);
+  if (!S || !G) return;
+  readColors(now);
+  const C = colors, g = G, cell = g.cell, roadW = Math.max(7, cell * 0.17);
+  ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
+  ctx.fillStyle = C.map; ctx.fillRect(0, 0, g.w, g.h);
+
+  // 街区
+  for (let r = 0; r < ROWS - 1; r++) for (let c = 0; c < COLS - 1; c++) {
+    const x = g.pad + c * cell + roadW * 0.75, y = g.pad + r * cell + roadW * 0.75, s = cell - roadW * 1.5;
+    const park = hash(r, c) < 0.12;
+    ctx.fillStyle = park ? C.park : C.block; rr(x, y, s, s, 5); ctx.fill();
+    if (!park) {
+      ctx.fillStyle = C.deco;
+      const n = 3 + Math.floor(hash(c, r) * 3), b = s / 3.4;
+      for (let i = 0; i < n; i++) {
+        const hx = x + 4 + hash(r * 9 + i, c) * (s - b - 8), hy = y + 4 + hash(c * 7 + i, r + 3) * (s - b - 8);
+        rr(hx, hy, b, b * 0.8, 2); ctx.fill();
+      }
+    } else {
+      ctx.fillStyle = C.flow1; ctx.globalAlpha = 0.35;
+      for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(x + s * (0.25 + 0.5 * hash(i, r)), y + s * (0.25 + 0.5 * hash(c, i)), s * 0.09, 0, 7); ctx.fill(); }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // 道路
+  const E = Object.values(S.edges);
+  ctx.lineCap = 'round';
+  E.forEach(e => {
+    const [x0, y0] = nodeXY(e.a, g), [x1, y1] = nodeXY(e.b, g);
+    ctx.strokeStyle = C.road; ctx.lineWidth = roadW; ctx.globalAlpha = e.closed ? 0.5 : 1;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.globalAlpha = 1;
+  });
+  E.forEach(e => {
+    const [x0, y0] = nodeXY(e.a, g), [x1, y1] = nodeXY(e.b, g), mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+    if (e.closed) {
+      ctx.strokeStyle = C.danger; ctx.lineWidth = 2.5; const k = roadW * 0.55;
+      ctx.beginPath(); ctx.moveTo(mx - k, my - k); ctx.lineTo(mx + k, my + k); ctx.moveTo(mx + k, my - k); ctx.lineTo(mx - k, my + k); ctx.stroke();
+      return;
+    }
+    const inset = roadW * 0.9, len = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / len, uy = (y1 - y0) / len;
+    ctx.strokeStyle = C['flow' + e.t]; ctx.lineWidth = Math.max(2.5, roadW * 0.3);
+    ctx.beginPath(); ctx.moveTo(x0 + ux * inset, y0 + uy * inset); ctx.lineTo(x1 - ux * inset, y1 - uy * inset); ctx.stroke();
+    const fs = Math.max(10, Math.min(14, cell * 0.2));
+    ctx.font = `700 ${fs}px "Chivo Mono", monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const tw = ctx.measureText(e.w).width + 8;
+    ctx.fillStyle = C.panel; rr(mx - tw / 2, my - fs * 0.7, tw, fs * 1.4, 4); ctx.fill();
+    ctx.strokeStyle = C['flow' + e.t]; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = C.ink; ctx.fillText(e.w, mx, my + 0.5);
+  });
+
+  // ナビ
+  const dest = S.dest != null ? S.patients[S.dest] : null;
+  if (S.navi && dest) {
+    const p = pathTo(S.car, dest.node, S.edges);
+    ctx.strokeStyle = C.accent; ctx.lineWidth = 4; ctx.setLineDash([8, 7]); ctx.lineDashOffset = -now / 40;
+    ctx.beginPath(); p.forEach((n, i) => { const [x, y] = nodeXY(n, g); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // 進める交差点
+  const pulse = 0.5 + 0.5 * Math.sin(now / 260);
+  if (S.phase === 'play' && !anim) {
+    neighbors(S.car, S.edges).forEach(n => {
+      const [x, y] = nodeXY(n, g);
+      ctx.strokeStyle = C.accent; ctx.lineWidth = 3; ctx.globalAlpha = 0.55 + 0.45 * pulse;
+      ctx.beginPath(); ctx.arc(x, y, roadW * 0.75 + pulse * 3, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+    });
+  }
+
+  // 診療所
+  {
+    const [x, y] = nodeXY(S.clinic, g), s = cell * 0.36;
+    ctx.fillStyle = C.accent; rr(x - s / 2, y - s / 2, s, s, 5); ctx.fill();
+    ctx.fillStyle = C['accent-ink']; const t = s * 0.18, l = s * 0.6;
+    ctx.fillRect(x - t / 2, y - l / 2, t, l); ctx.fillRect(x - l / 2, y - t / 2, l, t);
+    label('診療所', x, y + s / 2 + 2, C.accent);
+  }
+
+  // 患者さんの家
+  S.patients.forEach(p => {
+    if (p.status === 'hidden') return;
+    const [x, y] = nodeXY(p.node, g), s = cell * 0.32;
+    const col = p.status === 'active' ? C.danger : p.status === 'done' ? C.muted : p.kind === 'new' ? C.accent : C.ink;
+    if (p.status === 'active') {
+      ctx.strokeStyle = C.danger; ctx.globalAlpha = 1 - pulse * 0.7; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(x, y, s * 0.8 + pulse * s * 0.6, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = p.status === 'done' ? C.line : C.panel; ctx.strokeStyle = col; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    if (p.kind === 'facility') {
+      const fw = s * 1.15, fh = s * 1.05; ctx.rect(x - fw / 2, y - fh * 0.55, fw, fh); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = col; ctx.globalAlpha = 0.35;
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) if (!(i === 1 && j === 1)) ctx.fillRect(x - fw * 0.36 + i * fw * 0.27, y - fh * 0.42 + j * fh * 0.3, fw * 0.18, fh * 0.16);
+      ctx.globalAlpha = 1; ctx.beginPath();
+    } else {
+    ctx.moveTo(x - s / 2, y - s * 0.05); ctx.lineTo(x, y - s * 0.55); ctx.lineTo(x + s / 2, y - s * 0.05);
+    ctx.lineTo(x + s * 0.38, y - s * 0.05); ctx.lineTo(x + s * 0.38, y + s * 0.42); ctx.lineTo(x - s * 0.38, y + s * 0.42); ctx.lineTo(x - s * 0.38, y - s * 0.05);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    ctx.font = `700 ${Math.max(9, s * 0.42)}px "Zen Kaku Gothic New", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = col;
+    ctx.fillText(p.status === 'done' ? '✓' : { new: '初', emg: '急', facility: '施', regular: '定' }[p.kind], x, y + s * 0.2);
+    label(p.short + (p.kind === "facility" ? "" : "さん"), x, y + s * (p.kind === "facility" ? 0.55 : 0.42) + 2, col);
+    if (S.dest === p.id && p.status !== 'done') {
+      const fx = x + s * 0.45, fy = y - s * 0.6;
+      ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(fx, fy + s * 0.5); ctx.lineTo(fx, fy - s * 0.5); ctx.stroke();
+      ctx.fillStyle = p.status === 'active' ? C.danger : C.accent;
+      ctx.beginPath(); ctx.moveTo(fx, fy - s * 0.5); ctx.lineTo(fx + s * 0.55, fy - s * 0.3); ctx.lineTo(fx, fy - s * 0.1); ctx.fill();
+    }
+  });
+
+  // 車
+  let cx, cy;
+  if (anim) {
+    const k = Math.min(1, (now - anim.t0) / anim.dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    const [x0, y0] = nodeXY(anim.from, g), [x1, y1] = nodeXY(anim.to, g);
+    cx = x0 + (x1 - x0) * e; cy = y0 + (y1 - y0) * e;
+    if (k >= 1) setTimeout(() => anim && finishMove(), 0);
+  } else [cx, cy] = nodeXY(S.car, g);
+  {
+    const L = Math.max(20, cell * 0.38), W = L * 0.56;
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(heading);
+    ctx.fillStyle = 'rgba(0,0,0,.22)'; rr(-L / 2 + 2, -W / 2 + 3, L, W, 5); ctx.fill();
+    ctx.fillStyle = C.car; ctx.strokeStyle = C.ink; ctx.lineWidth = 1.8; rr(-L / 2, -W / 2, L, W, 5); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = C.ink; ctx.globalAlpha = 0.75; rr(L * 0.08, -W * 0.36, L * 0.2, W * 0.72, 2); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.fillStyle = C.danger; const t = W * 0.14, l = W * 0.5;
+    ctx.fillRect(-L * 0.22 - t / 2, -l / 2, t, l); ctx.fillRect(-L * 0.22 - l / 2, -t / 2, l, t);
+    ctx.restore();
+  }
+
+  // 得点の吹き出し
+  floaters = floaters.filter(f => now - f.t0 < 1600);
+  floaters.forEach(f => {
+    const k = (now - f.t0) / 1600;
+    ctx.globalAlpha = 1 - k; ctx.font = `700 ${Math.max(14, cell * 0.28)}px "Chivo Mono", monospace`; ctx.textAlign = 'center';
+    ctx.lineWidth = 4; ctx.strokeStyle = C.panel; ctx.strokeText(f.text, f.x, f.y - 20 - k * 40);
+    ctx.fillStyle = f.bad ? C.danger : C.accent; ctx.fillText(f.text, f.x, f.y - 20 - k * 40);
+    ctx.globalAlpha = 1;
+  });
+
+  function label(t, x, y, col) {
+    const fs = Math.max(10, Math.min(13, cell * 0.2));
+    ctx.font = `700 ${fs}px "Zen Kaku Gothic New", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.lineWidth = 3.5; ctx.strokeStyle = C.map; ctx.strokeText(t, x, y);
+    ctx.fillStyle = col; ctx.fillText(t, x, y);
+  }
+}
+
+// ---------- 入力 ----------
+cv.addEventListener('click', ev => {
+  if (!S || !G) return;
+  const r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+  const near = (n) => { const [nx, ny] = nodeXY(n, G); return Math.hypot(nx - x, ny - y); };
+  if (S.phase === 'play' && !anim) {
+    let best = -1, bd = G.cell * 0.45;
+    neighbors(S.car, S.edges).forEach(n => { const d = near(n); if (d < bd) { bd = d; best = n; } });
+    if (best >= 0) { tryMove(best); return; }
+  }
+  const p = S.patients.find(q => q.status !== 'hidden' && near(q.node) < G.cell * 0.4);
+  if (p) setDest(p.id);
+});
+document.addEventListener('keydown', ev => {
+  if (!S || S.phase !== 'play' || !$('#modal').hidden) return;
+  const [r, c] = rc(S.car);
+  const m = { ArrowLeft: c > 0 ? S.car - 1 : -1, ArrowRight: c < COLS - 1 ? S.car + 1 : -1, ArrowUp: r > 0 ? S.car - COLS : -1, ArrowDown: r < ROWS - 1 ? S.car + COLS : -1 }[ev.key];
+  if (m === undefined) return;
+  ev.preventDefault();
+  if (m >= 0) { const e = S.edges[key(S.car, m)]; if (e && e.closed) toast('通行止めです'); else tryMove(m); }
+});
+$('#navi').onclick = () => {
+  if (S.phase !== 'play' || S.dest == null) return;
+  if (!S.naviPaid) { addScore(-30); addLog('ナビで最短ルートを確認', -30); S.naviPaid = true; }
+  S.navi = true; renderHud();
+};
+$('#finish').onclick = () => {
+  if (S.phase !== 'play') return;
+  if (S.car !== S.clinic) { toast('診療所に戻ってから終了できます'); return; }
+  const left = S.patients.filter(p => p.status === 'todo').length;
+  openModal(`<h3>今日の診療を終えますか？</h3>
+    <p>${left ? `まだ <b>${left}人</b> の患者さんを診ていません。` : '予定の患者さんは全員診察しました。'}${S.calls.length ? '（このあと急変の電話が入るかもしれません）' : ''}</p>
+    <div class="actions"><button class="btn" id="no">続ける</button><button class="btn primary" id="yes">終了する</button></div>`);
+  $('#no').onclick = closeModal;
+  $('#yes').onclick = () => { closeModal(); endDay(false); };
+};
+
+new ResizeObserver(resize).observe($('#mapwrap'));
+window.addEventListener('resize', resize);
+
+function start(data) {
+  try { S = data && data.S && data.S.edges && data.S.patients[0].label ? data.S : null; } catch (e) { S = null; }
+  resize();
+  if (!S) { S = newGame(); showTitle(); }
+  else {
+    renderSide();
+    if (S.phase === 'title') showTitle();
+    else if (S.phase === 'end') renderSide();
+    else { S.phase = 'play'; checkEvents(); }
+  }
+  requestAnimationFrame(draw);
+}
+try { window.claude?.hot?.snapshot?.(() => ({ S })); } catch (e) {}
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+})();
+</script>
